@@ -1,10 +1,10 @@
 #include <iostream>
 #include <iomanip>
+#include <chrono> 
 #include <cuda_runtime.h>
 
-//nvcc matriz.cu -o matriz.exe
-//.\matriz.exe
-//.\matriz.exe > matriz.txt
+// nvcc matrizGPU.cu -o matrizGPU.exe
+// .\matrizGPU.exe > matrizGPU.txt
 
 #define CHECK_CUDA(call) \
     do { \
@@ -30,7 +30,7 @@ __global__ void multiplicarMatricesGPU(const float* A, const float* B, float* C,
 }
 
 int main() {
-    int N = 10000; 
+    int N = 3000; 
     int totalElementos = N * N;
     size_t bytes = totalElementos * sizeof(float);
 
@@ -49,12 +49,11 @@ int main() {
     CHECK_CUDA(cudaMalloc((void**)&d_B, bytes));
     CHECK_CUDA(cudaMalloc((void**)&d_C, bytes));
 
-
     cudaEvent_t start, stop;
     CHECK_CUDA(cudaEventCreate(&start));
     CHECK_CUDA(cudaEventCreate(&stop));
 
-    // Copia inicial de datos a la GPU
+    
     CHECK_CUDA(cudaMemcpy(d_A, h_A, bytes, cudaMemcpyHostToDevice));
     CHECK_CUDA(cudaMemcpy(d_B, h_B, bytes, cudaMemcpyHostToDevice));
 
@@ -64,26 +63,24 @@ int main() {
     std::cout << " Calculando multiplicacion de matrices " << N << "x" << N << " en GPU..." << std::endl;
 
    
-    CHECK_CUDA(cudaEventRecord(start));
-
-    // Lanzar Kernel
-    multiplicarMatricesGPU<<<bloquesEnGrilla, hilosPorBloque>>>(d_A, d_B, d_C, N);
+    auto inicioTotal = std::chrono::high_resolution_clock::now();
 
     
+    CHECK_CUDA(cudaEventRecord(start));
+    multiplicarMatricesGPU<<<bloquesEnGrilla, hilosPorBloque>>>(d_A, d_B, d_C, N);
     CHECK_CUDA(cudaEventRecord(stop));
-    CHECK_CUDA(cudaEventSynchronize(stop)); // Esperar a que la GPU termine
+    CHECK_CUDA(cudaEventSynchronize(stop)); 
+
+    float milisegundosGPU = 0;
+    CHECK_CUDA(cudaEventElapsedTime(&milisegundosGPU, start, stop));
 
    
-    float milisegundos = 0;
-    CHECK_CUDA(cudaEventElapsedTime(&milisegundos, start, stop));
-
-    // Copiar resultado de vuelta a la CPU
     CHECK_CUDA(cudaMemcpy(h_C, d_C, bytes, cudaMemcpyDeviceToHost));
 
-    std::cout << "[+] Calculo en GPU finalizado." << std::endl;
-    std::cout << "    - Tiempo de ejecucion del Kernel (GPU): " << milisegundos << " ms\n" << std::endl;
+    std::cout << "Calculo en GPU finalizado." << std::endl;
+    std::cout << "    - Tiempo exclusivo del Kernel (Velocidad GPU): " << milisegundosGPU << " ms\n" << std::endl;
 
-    std::cout << "[+] Imprimiendo matriz...\n" << std::endl;
+    std::cout << "Imprimiendo matriz...\n" << std::endl;
 
     for (int i = 0; i < N; ++i) {
         std::cout << "Fila " << std::setw(3) << i << " [ ";
@@ -93,11 +90,17 @@ int main() {
         std::cout << "]" << std::endl;
     }
 
-    std::cout << "\n[+] Impresion de la matriz de " << N << "x" << N << " finalizada con exito." << std::endl;
+
+    auto finTotal = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> tiempoTotal = finTotal - inicioTotal; // En segundos
+
+    std::cout << "\nImpresion de la matriz de " << N << "x" << N << " finalizada con exito." << std::endl;
+    
+    std::cout << "TIEMPO TOTAL (GPU + Impresion): " << tiempoTotal.count() << " segundos." << std::endl;
+  
 
     CHECK_CUDA(cudaEventDestroy(start));
     CHECK_CUDA(cudaEventDestroy(stop));
-
     CHECK_CUDA(cudaFree(d_A));
     CHECK_CUDA(cudaFree(d_B));
     CHECK_CUDA(cudaFree(d_C));
